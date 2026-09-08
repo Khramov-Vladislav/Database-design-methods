@@ -1,0 +1,41 @@
+# MacOS
+.DS_Store
+
+# ============================================================================
+# LaTeX
+# ============================================================================
+
+# Директория сборки
+build/
+
+# Вспомогательные файлы LaTeX
+*.aux
+*.log
+*.out
+*.toc
+*.lof
+*.lot
+*.fls
+*.fdb_latexmk
+*.synctex
+*.synctex.gz
+
+# BibTeX / Biber
+*.bbl
+*.blg
+*.bcf
+*.run.xml
+
+# Индексы и глоссарии
+*.idx
+*.ind
+*.ilg
+*.acn
+*.acr
+*.alg
+*.glg
+*.glo
+*.gls
+
+# LaTeX Workshop
+*.bak
