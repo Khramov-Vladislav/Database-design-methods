@@ -1,5 +1,5 @@
 -- Создать представление (VIEW), содержащее для каждого студента количество поселений и количество выполненных платежей.
-CREATE VIEW students_count_settlement_and_payment AS
+CREATE VIEW student_settlement_payment_counts AS
 SELECT
     student.student_id,
     student.last_name,
