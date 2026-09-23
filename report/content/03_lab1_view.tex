@@ -1,4 +1,5 @@
 % 03_lab1_view
+
 \newpage
 \section{Основная часть}
 \subsection{Лабораторная работа №1. Представления}
@@ -7,11 +8,18 @@
     \item Создать представление.
     \item Выполнить простой запрос к созданному представлению.
     \item Выполнить сложный запрос с присоединением к представлению других таблиц.
-    \item Проверить обновляемость представления.
+    % \item Проверить обновляемость представления.
 \end{enumerate}
 
 \subsubsection{Создание представления}
-Запрос, на основе которого было создано представление: для каждого студента подсчитать количество поселений и количество выполненных платежей. Код представления приведен в листинге~\ref{lst:create-view}.
+% Для каждого студента подсчитать количество поселений и количество выполненных платежей. 
+
+Для каждого студента найти идентификатор, фамилию, имя, отчество, количество поселений и количество выполненных платежей. 
+
+Код представления приведен в листинге~\ref{lst:create-view}. Графическое представление запроса приведено на рисунке~\ref{fig:view_create_diagram}. 
+
+Время выполнения запроса: 19.849 мс.
+
 \begin{lstlisting} [
     language=SQL,
     caption={Создание представления},
@@ -36,8 +44,24 @@ GROUP BY
     student.middle_name;
 \end{lstlisting}
 
-\subsubsection{Запросы}
-Был составлен запрос, который выводит студентов, у которых количество выполненных платежей меньше, чем у студента «А». В результирующей таблице было выведено 4462 строк. Код запроса представлен в листинге~\ref{lst:view-query1}. Результирующая таблица представлена в таблице~\ref{tab:view-query1}. Графическое представление запроса приведено на рисунке~\ref{fig:view_query1}.
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.45\textwidth]{figures/view_create_diagram.png}
+    \caption{Графическое представление создания представления}
+    \label{fig:view_create_diagram}
+\end{figure}
+
+Выполнение запроса начинается в блоке \textbf{\texttt{FROM}}, где на основе базовой таблицы \texttt{student} через последовательные операторы \textbf{\texttt{LEFT JOIN}} формируется объединенный массив строк с таблицами \texttt{settlement} и \texttt{payment}, сохраняющий всех студентов даже при отсутствии связанных записей. Затем в блоке \textbf{\texttt{GROUP BY}} полученный набор данных разделяется на изолированные группы по уникальному сочетанию идентификатора и ФИО каждого студента. Далее в блоке \textbf{\texttt{SELECT}} внутри каждой группы вычисляются агрегатные функции \textbf{\texttt{COUNT(DISTINCT ...)}}, которые подсчитывают точное количество уникальных ID заселений (\texttt{settlement\_count}) и платежей (\texttt{payment\_count}), предотвращая дублирование результатов. На финальном этапе команда \textbf{\texttt{CREATE VIEW}} регистрирует этот алгоритм в базе данных под именем \textbf{\texttt{student\_settlement\_payment\_counts}}, создавая виртуальную таблицу, которая будет динамически выполнять всю описанную цепочку шагов при каждом обращении к ней.
+
+\subsubsection{Запрос №1}
+% Найти студентов, у которых количество выполненных платежей меньше, чем у студента «А». 
+
+Найти студентов, у которых количество выполненных платежей меньше, чем у студента с фамилией «Glover», именем «Nels» и отчеством «Aimee», с указанием количества поселений и выполненных платежей.
+
+Код запроса представлен в листинге~\ref{lst:view-query1}. Результирующая таблица представлена в таблице~\ref{tab:view-query1}. В результирующей таблице было выведено 4462 строк. Графическое представление запроса приведено на рисунке~\ref{fig:view_query1} и рисунке~\ref{fig:view_query1_diagram}. 
+
+Время выполнения запроса: 247.327 мс.
+
 \begin{lstlisting} [
     language=SQL,
     caption={Простой запрос к представлению},
@@ -67,6 +91,7 @@ ORDER BY
     payment_count DESC;
 \end{lstlisting}
 
+% результаты выполнения запроса
 \begin{table}[H]
     \centering
     \caption{Результат простого запроса}
@@ -88,14 +113,40 @@ ORDER BY
     \end{tabular}
 \end{table}
 
+% графическое представление запроса 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.8\textwidth]{figures/view_query1.png}
-    \caption{Графическое представление простого запроса}
+    \includegraphics[width=0.5\textwidth]{figures/view_query1.png}
+    \caption{Графическое представление запроса №1}
     \label{fig:view_query1}
 \end{figure}
 
-Далее был составлен сложный запрос, в котором осуществляется присоединение таблиц settlement и review. Запрос выводит для каждого студента количество поселений, количество платежей и количество отзывов. В результирующей таблице было выведено 5000 строк. Код запроса представлен в листинге~\ref{lst:view-query2}. Результирующая таблица представлена в таблице~\ref{tab:view-query2}. Графическое представление запроса приведено на рисунке~\ref{fig:view_query2}.
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.7\textwidth]{figures/view_query1_diagram.png}
+    \caption{Диаграмма процесса выполнения запроса №1}
+    \label{fig:view_query1_diagram}
+\end{figure}
+
+% объяснение последовательности выполнения запроса
+Выполнение запроса начинается с обращения к таблице \\student\_settlement\_payment\_counts, после чего СУБД изолированно запускает вложенный подзапрос, чтобы найти конкретное число оплат \\(payment\_count) для студента с ФИО "Glover Nels Aimee". Полученное значение используется во внешнем фильтре WHERE, который сканирует основную таблицу и оставляет только тех студентов, чьё количество оплат строго меньше этого числа. Затем в блоке SELECT для прошедших фильтрацию строк формируется итоговый набор колонок (ФИО, количество заселений и оплат), который на финальном этапе в блоке ORDER BY сортируется по убыванию количества заселений (settlement\_count DESC), а при их равенстве — дополнительно упорядочивается по убыванию количества оплат (payment\_count DESC).
+
+% реляционная формула запроса
+Реляционная формула запроса:
+\begin{align*}
+\text{Result} = {} & \tau_{\mathit{settlement\_count}\text{ DESC}, \mathit{payment\_count}\text{ DESC}} \Biggl( \\
+& \pi_{\mathit{last\_name}, \mathit{first\_name}, \mathit{middle\_name}, \mathit{settlement\_count}, \mathit{payment\_count}} \Biggl( \\
+& \sigma_{\mathit{payment\_count} < \mathit{ref\_payment\_count}} \left( S \times R_2 \right) \Biggr) \Biggr) \\[1.5ex]
+\text{где } R_2 = {} & \rho_{\mathit{ref\_payment\_count} \leftarrow \mathit{payment\_count}}\left(\pi_{\mathit{payment\_count}}\left(\sigma_{\mathit{last\_name}=\text{'Glover'} \wedge \dots}(S)\right)\right)
+\end{align*}
+
+\subsubsection{Запрос №2}
+% Для каждого студента найти количество поселений, количество платежей и количество отзывов. 
+
+Для каждого студента найти фамилию, имя, отчество, количество поселений, количество выполненных платежей и количество оставленных отзывов.
+
+Код запроса представлен в листинге~\ref{lst:view-query2}. Результирующая таблица представлена в таблице~\ref{tab:view-query2}. В результирующей таблице было выведено 5000 строк. Графическое представление запроса приведено на рисунке~\ref{fig:view_query2} и рисунке~\ref{fig:view_query2_diagram}. Время выполнения запроса: 519.979 мс.
+
 \begin{lstlisting} [
     language=SQL,
     caption={Сложный запрос к представлению},
@@ -121,6 +172,7 @@ GROUP BY
     student_settlement_payment_counts.payment_count;
 \end{lstlisting}
 
+% результаты запроса
 \begin{table}[H]
     \centering
     \caption{Результат сложного запроса}
@@ -142,6 +194,7 @@ GROUP BY
     \end{tabular}
 \end{table}
 
+% графическое представление
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.8\textwidth]{figures/view_query2.png}
@@ -149,35 +202,53 @@ GROUP BY
     \label{fig:view_query2}
 \end{figure}
 
-\subsubsection{Обновляемость представления}
-Представление является обновляемым, если оно удовлетворяет требованиям СУБД для выполнения операций \texttt{insert}, \texttt{update} и \texttt{delete}. В частности, представление не должно содержать агрегатных функций, группировки, вычисляемых столбцов и некоторых операций объединения, препятствующих однозначному сопоставлению строк представления со строками исходных таблиц.
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.5\textwidth]{figures/view_query2_diagram.png}
+    \caption{Диаграмма процесса выполнения запроса №2}
+    \label{fig:view_query2_diagram}
+\end{figure}
 
-В данном представлении используются агрегатные функции \texttt{count()}, которые вычисляют количество поселений и платежей для каждого студента. Кроме того, представление содержит \texttt{gorup by}, необходимое для формирования одной строки с результатами подсчёта для каждого студента. Также для получения данных используются операции \texttt{left join} между таблицами \texttt{student}, \texttt{settlement} и \texttt{payment}.
+% объяснение запроса 
+Выполнение этого запроса начинается в блоке FROM, где СУБД берет таблицу student\_settlement\_payment\_counts и последовательно объединяет ее с помощью левого внешнего соединения (LEFT JOIN) сначала с таблицей settlement по идентификатору студента, а затем с таблицей review по идентификатору заселения, сохраняя при этом всех студентов, даже если у них нет заселений или отзывов. Далее данные группируются в блоке GROUP BY по уникальному идентификатору студента и всем запрашиваемым анкетным полям, чтобы объединить дублирующиеся из-за соединений строки. На этапе группировки в блоке SELECT рассчитывается агрегатная функция COUNT(DISTINCT...), которая подсчитывает точное количество уникальных отзывов для каждого студента, после чего формируется финальный набор данных, содержащий ФИО, количество заселений, количество оплат и вычисленное количество отзывов.
 
-Таким образом, строки представления являются результатом группировки и агрегации данных нескольких таблиц и не соответствуют однозначно отдельным строкам исходных таблиц. Следовательно, представление \texttt{student\_settlement\_payment\_counts} является необновляемым. Непосредственное выполнение операций \texttt{insert}, \texttt{update} и \texttt{delete} над данным представлением невозможно.
+% реляционная формула запроса
+Реляционная формула запроса:
+\begin{align*}
+\text{Result} = {} & \pi_{\mathit{last\_name}, \mathit{first\_name}, \mathit{middle\_name}, \mathit{settlement\_count}, \mathit{payment\_count}, \mathit{review\_count}} \Biggl( \\
+& {}_{\mathit{student\_id}, \dots} \, \gamma_{\mathit{COUNT\_DISTINCT}(\mathit{review\_id}) \rightarrow \mathit{review\_count}} \Bigl( \\
+& \big( S \mathbin{\bowtie\mkern-11.5mu\ltimes} \text{settlement} \big) \mathbin{\bowtie\mkern-11.5mu\ltimes} \text{review} \Bigr) \Biggr)
+\end{align*}
 
-Код, демонстрирующий невозможность непосредственного обновления представления, приведён в листинге~\ref{lst:view_update}.
+% \subsubsection{Обновляемость представления}
+% Представление является обновляемым, если оно удовлетворяет требованиям СУБД для выполнения операций \texttt{insert}, \texttt{update} и \texttt{delete}. В частности, представление не должно содержать агрегатных функций, группировки, вычисляемых столбцов и некоторых операций объединения, препятствующих однозначному сопоставлению строк представления со строками исходных таблиц.
 
-\begin{lstlisting}[
-    language=SQL,
-    caption={Проверка обновляемости представления}, 
-    label={lst:view_update}]
-UPDATE
-    student_settlement_payment_counts
-SET
-    settlement_count = 10
-WHERE
-    student_id = 1;
+% В данном представлении используются агрегатные функции \texttt{count()}, которые вычисляют количество поселений и платежей для каждого студента. Кроме того, представление содержит \texttt{gorup by}, необходимое для формирования одной строки с результатами подсчёта для каждого студента. Также для получения данных используются операции \texttt{left join} между таблицами \texttt{student}, \texttt{settlement} и \texttt{payment}.
 
-INSERT INTO
-    student_settlement_payment_counts (
-        student_id,
-        last_name,
-        first_name,
-        middle_name,
-        settlement_count,
-        payment_count
-    )
-VALUES
-    (100, 'Khramov', 'Vlad', 'Dmitry', 5, 3);
-\end{lstlisting}
+% Таким образом, строки представления являются результатом группировки и агрегации данных нескольких таблиц и не соответствуют однозначно отдельным строкам исходных таблиц. Следовательно, представление \texttt{student\_settlement\_payment\_counts} является необновляемым. Непосредственное выполнение операций \texttt{insert}, \texttt{update} и \texttt{delete} над данным представлением невозможно.
+
+% Код, демонстрирующий невозможность непосредственного обновления представления, приведён в листинге~\ref{lst:view_update}.
+
+% \begin{lstlisting}[
+%     language=SQL,
+%     caption={Проверка обновляемости представления}, 
+%     label={lst:view_update}]
+% UPDATE
+%     student_settlement_payment_counts
+% SET
+%     settlement_count = 10
+% WHERE
+%     student_id = 1;
+
+% INSERT INTO
+%     student_settlement_payment_counts (
+%         student_id,
+%         last_name,
+%         first_name,
+%         middle_name,
+%         settlement_count,
+%         payment_count
+%     )
+% VALUES
+%     (100, 'Khramov', 'Vlad', 'Dmitry', 5, 3);
+% \end{lstlisting}
