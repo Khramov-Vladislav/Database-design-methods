@@ -136,8 +136,8 @@ ORDER BY
 \begin{align*}
 \text{Result} = {} & \tau_{\mathit{settlement\_count}\text{ DESC}, \mathit{payment\_count}\text{ DESC}} \Biggl( \\
 & \pi_{\mathit{last\_name}, \mathit{first\_name}, \mathit{middle\_name}, \mathit{settlement\_count}, \mathit{payment\_count}} \Biggl( \\
-& \sigma_{\mathit{payment\_count} < \mathit{ref\_payment\_count}} \left( S \times R_2 \right) \Biggr) \Biggr) \\[1.5ex]
-\text{где } R_2 = {} & \rho_{\mathit{ref\_payment\_count} \leftarrow \mathit{payment\_count}}\left(\pi_{\mathit{payment\_count}}\left(\sigma_{\mathit{last\_name}=\text{'Glover'} \wedge \dots}(S)\right)\right)
+& S \mathbin{\bowtie}_{\mathit{payment\_count} < \mathit{ref\_payment\_count}} \\
+& \quad \rho_{\mathit{ref\_payment\_count} \leftarrow \mathit{payment\_count}}\left(\pi_{\mathit{payment\_count}}\left(\sigma_{\mathit{last\_name}=\text{'Glover'} \wedge \dots}(S)\right)\right) \Biggr) \Biggr)
 \end{align*}
 
 \subsubsection{Запрос №2}
