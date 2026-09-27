@@ -1,0 +1,254 @@
+% \newpage
+% \subsection{Лабораторная работа №2. Триггеры}
+
+% Задачи к лабораторной работе №2:
+
+% \begin{enumerate}
+% \item Создать таблицу для хранения сводной информации о количестве поселений и платежей каждого студента.
+% \item Реализовать триггеры для автоматического поддержания актуальности данных в созданной таблице при выполнении операций добавления, изменения и удаления записей в таблицах \texttt{student}, \texttt{settlement} и \texttt{payment}.
+% \item Проверить корректность работы триггеров и автоматическую обновляемость сводной таблицы при изменении данных в связанных таблицах.
+% \end{enumerate}
+
+% \subsubsection{Создание таблицы}
+
+% Была создана таблица для учета количества поселений и платежей каждого студента. Таблица содержит идентификатор студента, его фамилию, имя и отчество, а также рассчитанные значения количества поселений и платежей. Схема базы данных после добавления таблицы представлена на Рис. ???. Код создания и заполнения таблицы на основе данных уже существующих студентов, поселений и платежей приведен в листинге~\ref{lst:student_settlement_payment_counts}.
+
+% \begin{lstlisting} [
+%     language=SQL,
+%     caption={Таблица student\_settlement\_payment\_counts},
+%     label={lst:student_settlement_payment_counts}
+% ]
+% CREATE TABLE student_settlement_payment_counts AS
+% SELECT
+%     student.student_id,
+%     student.last_name,
+%     student.first_name,
+%     student.middle_name,
+%     COUNT(DISTINCT settlement.settlement_id) AS settlement_count,
+%     COUNT(DISTINCT payment.payment_id) AS payment_count
+% FROM
+%     student
+%     LEFT JOIN settlement
+%         ON student.student_id = settlement.student_id
+%     LEFT JOIN payment
+%         ON settlement.settlement_id = payment.settlement_id
+% GROUP BY
+%     student.student_id,
+%     student.last_name,
+%     student.first_name,
+%     student.middle_name;
+% \end{lstlisting}
+
+% Для обеспечения уникальности записей по каждому студенту в созданной таблице столбец \texttt{student\_id} был определён как первичный ключ:
+
+% \begin{lstlisting} [
+%     language=SQL,
+%     caption={Первичный ключ для таблицы student\_settlement\_payment\_counts},
+%     label={lst:primary_key}
+% ]
+% ALTER TABLE student_settlement_payment_counts
+% ADD PRIMARY KEY (student_id);
+% \end{lstlisting}
+
+% \subsubsection{Создание триггеров}
+
+% Затем были созданы триггеры для операций \texttt{INSERT}, \texttt{DELETE} и \texttt{UPDATE} для таблиц \texttt{student}, \texttt{settlement} и \texttt{payment}. Триггеры предназначены для автоматического поддержания актуальности данных в таблице \texttt{student\_settlement\_payment\_counts}. Код триггеров приведен в листингах 7--9.
+
+% Для таблицы \texttt{student} был создан триггер \texttt{after\_student\_delete}, который при удалении студента автоматически удаляет соответствующую запись из таблицы \texttt{student\_settlement\_payment\_counts}. Это необходимо для предотвращения наличия в сводной таблице записей о студентах, отсутствующих в основной таблице.
+
+% \begin{lstlisting}[
+% language=SQL,
+% caption={Триггер для таблицы student},
+% label={lst:student_triggers}
+% ]
+% CREATE OR REPLACE FUNCTION after_student_delete()
+% RETURNS TRIGGER
+% AS $$
+% BEGIN
+% DELETE FROM student_settlement_payment_counts
+% WHERE student_id = OLD.student_id;
+
+% ```
+% RETURN OLD;
+% ```
+
+% END;
+
+% $$$LANGUAGE plpgsql;
+
+% CREATE TRIGGER after_student_delete
+% AFTER DELETE ON student
+% FOR EACH ROW
+% EXECUTE FUNCTION after_student_delete();
+% \end{lstlisting}
+
+% Для таблицы \texttt{settlement} были созданы триггеры для операций добавления, удаления и изменения записей. Триггер \texttt{after\_settlement\_insert} при добавлении нового поселения увеличивает значение \texttt{settlement\_count} для соответствующего студента на единицу.
+
+% Триггер \texttt{after\_settlement\_delete} при удалении поселения уменьшает значение \texttt{settlement\_count} для связанного студента на единицу.
+
+% Триггер \texttt{after\_settlement\_update} при изменении студента, которому принадлежит поселение, корректирует счетчики обоих студентов: для старого студента количество поселений уменьшается на единицу, а для нового увеличивается на единицу.
+
+% \begin{lstlisting}[
+%     language=SQL,
+%     caption={Триггеры для таблицы settlement},
+%     label={lst:settlement_triggers}
+% ]
+% CREATE OR REPLACE FUNCTION after_settlement_insert()
+% RETURNS TRIGGER
+% AS $$
+% BEGIN
+%     UPDATE student_settlement_payment_counts
+%     SET settlement_count = settlement_count + 1
+%     WHERE student_id = NEW.student_id;
+
+%     RETURN NEW;
+% END;
+% $$ LANGUAGE plpgsql;
+
+% CREATE TRIGGER after_settlement_insert
+% AFTER INSERT ON settlement
+% FOR EACH ROW
+% EXECUTE FUNCTION after_settlement_insert();
+
+
+% CREATE OR REPLACE FUNCTION after_settlement_delete()
+% RETURNS TRIGGER
+% AS $$
+% BEGIN
+%     UPDATE student_settlement_payment_counts
+%     SET settlement_count = settlement_count - 1
+%     WHERE student_id = OLD.student_id;
+
+%     RETURN OLD;
+% END;
+% $$ LANGUAGE plpgsql;
+
+% CREATE TRIGGER after_settlement_delete
+% AFTER DELETE ON settlement
+% FOR EACH ROW
+% EXECUTE FUNCTION after_settlement_delete();
+
+
+% CREATE OR REPLACE FUNCTION after_settlement_update()
+% RETURNS TRIGGER
+% AS $$
+% BEGIN
+%     IF OLD.student_id IS NOT NULL THEN
+%         UPDATE student_settlement_payment_counts
+%         SET settlement_count = settlement_count - 1
+%         WHERE student_id = OLD.student_id;
+%     END IF;
+
+%     IF NEW.student_id IS NOT NULL THEN
+%         UPDATE student_settlement_payment_counts
+%         SET settlement_count = settlement_count + 1
+%         WHERE student_id = NEW.student_id;
+%     END IF;
+
+%     RETURN NEW;
+% END;
+% $$ LANGUAGE plpgsql;
+
+% CREATE TRIGGER after_settlement_update
+% AFTER UPDATE ON settlement
+% FOR EACH ROW
+% EXECUTE FUNCTION after_settlement_update();
+% \end{lstlisting}
+
+% Для таблицы \texttt{payment} также были созданы триггеры для операций добавления, удаления и изменения записей. Поскольку платеж связан со студентом через таблицу \texttt{settlement}, при выполнении триггеров идентификатор студента определяется по значению \texttt{settlement\_id}.
+
+% Триггер \texttt{after\_payment\_insert} при добавлении платежа увеличивает значение \texttt{payment\_count} для студента, которому принадлежит соответствующее поселение.
+
+% Триггер \texttt{after\_payment\_delete} при удалении платежа уменьшает значение \texttt{payment\_count} для связанного студента.
+
+% Триггер \texttt{after\_payment\_update} при изменении поселения, с которым связан платеж, корректирует счетчики обоих студентов. Для студента, которому принадлежало старое поселение, счетчик уменьшается на единицу, а для студента нового поселения увеличивается на единицу.
+
+% \begin{lstlisting}[
+%     language=SQL,
+%     caption={Триггеры для таблицы payment},
+%     label={lst:payment_triggers}
+% ]
+% CREATE OR REPLACE FUNCTION after_payment_insert()
+% RETURNS TRIGGER
+% AS $function$
+% BEGIN
+%     UPDATE student_settlement_payment_counts
+%     SET payment_count = payment_count + 1
+%     WHERE student_id = (
+%         SELECT student_id
+%         FROM settlement
+%         WHERE settlement_id = NEW.settlement_id
+%     );
+
+%     RETURN NEW;
+% END;
+% $function$ LANGUAGE plpgsql;
+
+% CREATE TRIGGER after_payment_insert
+% AFTER INSERT ON payment
+% FOR EACH ROW
+% EXECUTE FUNCTION after_payment_insert();
+
+
+% CREATE OR REPLACE FUNCTION after_payment_delete()
+% RETURNS TRIGGER
+% AS $function$
+% BEGIN
+%     UPDATE student_settlement_payment_counts
+%     SET payment_count = payment_count - 1
+%     WHERE student_id = (
+%         SELECT student_id
+%         FROM settlement
+%         WHERE settlement_id = OLD.settlement_id
+%     );
+
+%     RETURN OLD;
+% END;
+% $function$ LANGUAGE plpgsql;
+
+% CREATE TRIGGER after_payment_delete
+% AFTER DELETE ON payment
+% FOR EACH ROW
+% EXECUTE FUNCTION after_payment_delete();
+
+
+% CREATE OR REPLACE FUNCTION after_payment_update()
+% RETURNS TRIGGER
+% AS $function$
+% BEGIN
+%     IF OLD.settlement_id IS NOT NULL THEN
+%         UPDATE student_settlement_payment_counts
+%         SET payment_count = payment_count - 1
+%         WHERE student_id = (
+%             SELECT student_id
+%             FROM settlement
+%             WHERE settlement_id = OLD.settlement_id
+%         );
+%     END IF;
+
+%     IF NEW.settlement_id IS NOT NULL THEN
+%         UPDATE student_settlement_payment_counts
+%         SET payment_count = payment_count + 1
+%         WHERE student_id = (
+%             SELECT student_id
+%             FROM settlement
+%             WHERE settlement_id = NEW.settlement_id
+%         );
+%     END IF;
+
+%     RETURN NEW;
+% END;
+% $function$ LANGUAGE plpgsql;
+
+% CREATE TRIGGER after_payment_update
+% AFTER UPDATE ON payment
+% FOR EACH ROW
+% EXECUTE FUNCTION after_payment_update();
+% \end{lstlisting}
+
+% Таким образом, созданные триггеры обеспечивают автоматическое изменение значений \texttt{settlement\_count} и \texttt{payment\_count} при добавлении, удалении и изменении связанных записей. Это позволяет поддерживать таблицу \texttt{student\_settlement\_payment\_counts} в актуальном состоянии без необходимости выполнять её повторное заполнение вручную.
+
+
+
+
+
