@@ -1,3 +1,4 @@
+% todo: исправить таблицу
 \newpage
 \subsection{Лабораторная работа №2. Триггеры}
 
@@ -11,8 +12,7 @@
 
 \subsubsection{Создание сводной таблицы}
 
-Для хранения сводной информации о количестве поселений и платежей каждого студента была создана таблица
-\texttt{student\_settlement\_payment\_counts}.
+Для хранения сводной информации о количестве поселений и платежей каждого студента была создана таблица \texttt{\small student\_settlement\_payment\_counts}.
 
 Таблица содержит идентификатор студента, его фамилию, имя и отчество, а также количество связанных с ним поселений и платежей. Первоначальное заполнение таблицы выполняется на основе уже существующих записей таблиц \texttt{student}, \texttt{settlement} и \texttt{payment}.
 
@@ -35,10 +35,8 @@ SELECT
     COUNT(DISTINCT payment.payment_id) AS payment_count
 FROM
     student
-    LEFT JOIN settlement
-        ON student.student_id = settlement.student_id
-    LEFT JOIN payment
-        ON settlement.settlement_id = payment.settlement_id
+    LEFT JOIN settlement ON student.student_id = settlement.student_id
+    LEFT JOIN payment ON settlement.settlement_id = payment.settlement_id
 GROUP BY
     student.student_id,
     student.last_name,
@@ -53,8 +51,10 @@ GROUP BY
     caption={Создание первичного ключа таблицы student\_settlement\_payment\_counts},
     label={lst:primary_key}
 ]
-ALTER TABLE student_settlement_payment_counts
-ADD PRIMARY KEY (student_id);
+ALTER TABLE
+    student_settlement_payment_counts
+ADD
+    PRIMARY KEY (student_id);
 \end{lstlisting}
 
 Таким образом, в таблице \texttt{student\_settlement\_payment\_counts} для каждого студента хранится одна запись со следующими значениями:
@@ -287,71 +287,436 @@ EXECUTE FUNCTION after_payment_update();
 
 \subsubsection{Проверка работы триггеров}
 
-Для проверки корректности работы созданных триггеров были выполнены операции добавления, удаления и изменения записей в таблицах \texttt{student}, \texttt{settlement} и \texttt{payment}. После каждой операции проверялось автоматическое изменение соответствующей записи в таблице
-\texttt{student\_settlement\_payment\_counts}.
-
-При добавлении нового поселения значение \texttt{settlement\_count} соответствующего студента увеличивается на единицу. При удалении поселения это значение уменьшается на единицу.
-
-При изменении студента, которому принадлежит поселение, значение \texttt{settlement\_count} уменьшается для прежнего студента и увеличивается для нового.
-
-Аналогичным образом проверяется работа триггеров для таблицы \texttt{payment}. После добавления платежа значение \texttt{payment\_count} соответствующего студента увеличивается на единицу, а после удаления платежа --- уменьшается на единицу.
-
-При изменении \texttt{settlement\_id} платежа производится корректировка счётчиков у студентов, связанных со старым и новым поселениями.
-
-Также была проверена обработка удаления студента. После удаления записи из таблицы \texttt{student} соответствующая запись автоматически удаляется из таблицы
-\texttt{student\_settlement\_payment\_counts}.
-
-Таким образом, результаты проверки показывают, что созданные триггеры автоматически поддерживают значения \texttt{settlement\_count} и \texttt{payment\_count} в соответствии с изменениями связанных таблиц.
+Для проверки корректности работы триггеров были сформированы тестовые примеры, покрывающие все варианты изменения данных исходных таблиц: удаление записей таблицы \texttt{student}, добавление, удаление и изменение записей таблиц \texttt{settlement} и \texttt{payment}. Перечень проверяемых состояний представлен в таблице~\ref{tab:trigger_tests}.
 
 \begin{table}[H]
 \centering
-\caption{Действия созданных триггеров}
-\label{tab:trigger_actions}
+\caption{Перечень тестовых примеров}
+\label{tab:trigger_tests}
 \begin{tabularx}{\textwidth}{|c|X|}
 \hline
-\textbf{№} & \textbf{Действие} \\ \hline
-
-1 &
-Удаление студента из таблицы \texttt{student}. В таблице
-\texttt{student\_settlement\_payment\_counts} удаляется
-соответствующая запись.
-\\ \hline
-
-2 &
-Добавление поселения в таблицу \texttt{settlement}. Счётчик
-поселений для указанного студента увеличивается на 1.
-\\ \hline
-
-3 &
-Удаление поселения из таблицы \texttt{settlement}. Счётчик
-поселений для указанного студента уменьшается на 1.
-\\ \hline
-
-4 &
-Изменение студента у поселения в таблице \texttt{settlement}.
-Счётчик для нового студента увеличивается на 1, а для старого
-уменьшается на 1.
-\\ \hline
-
-5 &
-Добавление платежа в таблицу \texttt{payment}. Счётчик платежей
-для соответствующего студента увеличивается на 1.
-\\ \hline
-
-6 &
-Удаление платежа из таблицы \texttt{payment}. Счётчик платежей
-для соответствующего студента уменьшается на 1.
-\\ \hline
-
-7 &
-Изменение поселения у платежа в таблице \texttt{payment}.
-Счётчик для студента нового поселения увеличивается на 1,
-а для старого уменьшается на 1.
-\\ \hline
-
+\textbf{№} & \textbf{Описание проверяемого состояния} \\ \hline
+1 & Удаление студента: запись о студенте удаляется из сводной таблицы \\ \hline
+2 & Добавление поселения: \texttt{settlement\_count} студента увеличивается на 1 \\ \hline
+3 & Удаление поселения с платежами: \texttt{settlement\_count} уменьшается на 1, \texttt{payment\_count} уменьшается на количество платежей поселения \\ \hline
+4 & Изменение студента у поселения с платежами: счётчики поселений и платежей переносятся от прежнего студента к новому \\ \hline
+5 & Добавление платежа: \texttt{payment\_count} студента увеличивается на 1 \\ \hline
+6 & Удаление платежа: \texttt{payment\_count} студента уменьшается на 1 \\ \hline
+7 & Изменение поселения у платежа: \texttt{payment\_count} уменьшается у студента прежнего поселения и увеличивается у студента нового поселения \\ \hline
 \end{tabularx}
 \end{table}
 
+Каждый тест состоит из двух частей. В первой части выполняется запрос, фиксирующий исходное состояние сводной таблицы. Во второй части выполняется изменение данных и повторный запрос, показывающий состояние сводной таблицы после изменения. Результаты запросов представлены в таблицах. Тесты выполнялись последовательно, так как результат предыдущих тестов влияет на исходное состояние последующих.
+
+% ---------------- Тест 1 ----------------
+\paragraph{Тест 1. Удаление студента.}
+У студента с \texttt{student\_id} = 121 в сводной таблице хранится запись с шестью поселениями и 73 платежами. Выполняется удаление студента из таблицы \texttt{student}.
+
+\begin{lstlisting}[
+    language=SQL,
+    caption={Тест 1. Состояние до изменения},
+    label={lst:test1_before}
+]
+SELECT *
+FROM student_settlement_payment_counts
+WHERE student_id = 121;
+\end{lstlisting}
+
+\begin{table}[H]
+\centering
+\caption{Тест 1. Результат запроса до изменения}
+\label{tab:test1_before}
+\small
+\begin{tabular}{|c|c|c|c|c|c|}
+\hline
+\textbf{student\_id} & \textbf{last\_name} & \textbf{first\_name} & \textbf{middle\_name} & \textbf{settlement\_count} & \textbf{payment\_count} \\ \hline
+121 & Feeney & Henderson & Teagan & 6 & 73 \\ \hline
+\end{tabular}
+\end{table}
+
+\begin{lstlisting}[
+    language=SQL,
+    caption={Тест 1. Изменение данных и состояние после изменения},
+    label={lst:test1_after}
+]
+DELETE FROM student
+WHERE student_id = 121;
+
+SELECT *
+FROM student_settlement_payment_counts
+WHERE student_id = 121;
+\end{lstlisting}
+
+\begin{table}[H]
+\centering
+\caption{Тест 1. Результат запроса после изменения}
+\label{tab:test1_after}
+\small
+\begin{tabular}{|c|c|c|c|c|c|}
+\hline
+\textbf{student\_id} & \textbf{last\_name} & \textbf{first\_name} & \textbf{middle\_name} & \textbf{settlement\_count} & \textbf{payment\_count} \\ \hline
+\multicolumn{6}{|c|}{0 строк} \\ \hline
+\end{tabular}
+\end{table}
+
+Запись о студенте 121 удалена из сводной таблицы.
+
+% ---------------- Тест 2 ----------------
+\paragraph{Тест 2. Добавление поселения.}
+У студента 4 пять поселений и 65 платежей. Выполняется добавление нового поселения этого студента.
+
+\begin{lstlisting}[
+    language=SQL,
+    caption={Тест 2. Состояние до изменения},
+    label={lst:test2_before}
+]
+SELECT student_id, settlement_count, payment_count
+FROM student_settlement_payment_counts
+WHERE student_id = 4;
+\end{lstlisting}
+
+\begin{table}[H]
+\centering
+\caption{Тест 2. Результат запроса до изменения}
+\label{tab:test2_before}
+\small
+\begin{tabular}{|c|c|c|}
+\hline
+\textbf{student\_id} & \textbf{settlement\_count} & \textbf{payment\_count} \\ \hline
+4 & 5 & 65 \\ \hline
+\end{tabular}
+\end{table}
+
+\begin{lstlisting}[
+    language=SQL,
+    caption={Тест 2. Изменение данных и состояние после изменения},
+    label={lst:test2_after}
+]
+INSERT INTO settlement (student_id, employee_id, place_id)
+VALUES (4, 2, 2);
+
+SELECT student_id, settlement_count, payment_count
+FROM student_settlement_payment_counts
+WHERE student_id = 4;
+\end{lstlisting}
+
+\begin{table}[H]
+\centering
+\caption{Тест 2. Результат запроса после изменения}
+\label{tab:test2_after}
+\small
+\begin{tabular}{|c|c|c|}
+\hline
+\textbf{student\_id} & \textbf{settlement\_count} & \textbf{payment\_count} \\ \hline
+4 & 6 & 65 \\ \hline
+\end{tabular}
+\end{table}
+
+Значение \texttt{settlement\_count} увеличилось с 5 до 6. Значение \texttt{payment\_count} не изменилось, так как у нового поселения платежей нет.
+
+% ---------------- Тест 3 ----------------
+\paragraph{Тест 3. Удаление поселения с платежами.}
+У студента 4 шесть поселений и 65 платежей. Поселение 29 содержит 12 платежей, которые удаляются каскадно вместе с ним.
+
+\begin{lstlisting}[
+    language=SQL,
+    caption={Тест 3. Состояние до изменения},
+    label={lst:test3_before}
+]
+SELECT student_id, settlement_count, payment_count
+FROM student_settlement_payment_counts
+WHERE student_id = 4;
+\end{lstlisting}
+
+\begin{table}[H]
+\centering
+\caption{Тест 3. Результат запроса до изменения}
+\label{tab:test3_before}
+\small
+\begin{tabular}{|c|c|c|}
+\hline
+\textbf{student\_id} & \textbf{settlement\_count} & \textbf{payment\_count} \\ \hline
+4 & 6 & 65 \\ \hline
+\end{tabular}
+\end{table}
+
+\begin{lstlisting}[
+    language=SQL,
+    caption={Тест 3. Изменение данных и состояние после изменения},
+    label={lst:test3_after}
+]
+DELETE FROM settlement
+WHERE settlement_id = 29;
+
+SELECT student_id, settlement_count, payment_count
+FROM student_settlement_payment_counts
+WHERE student_id = 4;
+\end{lstlisting}
+
+\begin{table}[H]
+\centering
+\caption{Тест 3. Результат запроса после изменения}
+\label{tab:test3_after}
+\small
+\begin{tabular}{|c|c|c|}
+\hline
+\textbf{student\_id} & \textbf{settlement\_count} & \textbf{payment\_count} \\ \hline
+4 & 5 & 53 \\ \hline
+\end{tabular}
+\end{table}
+
+Значение \texttt{settlement\_count} уменьшилось с 6 до 5, а \texttt{payment\_count} --- с 65 до 53, то есть на 12 платежей удалённого поселения.
+
+% ---------------- Тест 4 ----------------
+\paragraph{Тест 4. Изменение студента у поселения.}
+Поселение 25 принадлежит студенту 4 и содержит 15 платежей. Выполняется передача этого поселения студенту 5.
+
+\begin{lstlisting}[
+    language=SQL,
+    caption={Тест 4. Состояние до изменения},
+    label={lst:test4_before}
+]
+SELECT student_id, settlement_count, payment_count
+FROM student_settlement_payment_counts
+WHERE student_id IN (4, 5)
+ORDER BY student_id;
+\end{lstlisting}
+
+\begin{table}[H]
+\centering
+\caption{Тест 4. Результат запроса до изменения}
+\label{tab:test4_before}
+\small
+\begin{tabular}{|c|c|c|}
+\hline
+\textbf{student\_id} & \textbf{settlement\_count} & \textbf{payment\_count} \\ \hline
+4 & 5 & 53 \\ \hline
+5 & 9 & 112 \\ \hline
+\end{tabular}
+\end{table}
+
+\begin{lstlisting}[
+    language=SQL,
+    caption={Тест 4. Изменение данных и состояние после изменения},
+    label={lst:test4_after}
+]
+UPDATE settlement
+SET student_id = 5
+WHERE settlement_id = 25;
+
+SELECT student_id, settlement_count, payment_count
+FROM student_settlement_payment_counts
+WHERE student_id IN (4, 5)
+ORDER BY student_id;
+\end{lstlisting}
+
+\begin{table}[H]
+\centering
+\caption{Тест 4. Результат запроса после изменения}
+\label{tab:test4_after}
+\small
+\begin{tabular}{|c|c|c|}
+\hline
+\textbf{student\_id} & \textbf{settlement\_count} & \textbf{payment\_count} \\ \hline
+4 & 4 & 38 \\ \hline
+5 & 10 & 127 \\ \hline
+\end{tabular}
+\end{table}
+
+У студента 4 значения уменьшились на одно поселение и 15 платежей, у студента 5 --- увеличились на столько же.
+
+% ---------------- Тест 5 ----------------
+\paragraph{Тест 5. Добавление платежа.}
+У студента 5 127 платежей. Выполняется добавление платежа к поселению 30, принадлежащему этому студенту.
+
+\begin{lstlisting}[
+    language=SQL,
+    caption={Тест 5. Состояние до изменения},
+    label={lst:test5_before}
+]
+SELECT student_id, payment_count
+FROM student_settlement_payment_counts
+WHERE student_id = 5;
+\end{lstlisting}
+
+\begin{table}[H]
+\centering
+\caption{Тест 5. Результат запроса до изменения}
+\label{tab:test5_before}
+\small
+\begin{tabular}{|c|c|}
+\hline
+\textbf{student\_id} & \textbf{payment\_count} \\ \hline
+5 & 127 \\ \hline
+\end{tabular}
+\end{table}
+
+\begin{lstlisting}[
+    language=SQL,
+    caption={Тест 5. Изменение данных и состояние после изменения},
+    label={lst:test5_after}
+]
+INSERT INTO payment (settlement_id, payment_amount, payment_date)
+VALUES (30, 5000, CURRENT_DATE);
+
+SELECT student_id, payment_count
+FROM student_settlement_payment_counts
+WHERE student_id = 5;
+\end{lstlisting}
+
+\begin{table}[H]
+\centering
+\caption{Тест 5. Результат запроса после изменения}
+\label{tab:test5_after}
+\small
+\begin{tabular}{|c|c|}
+\hline
+\textbf{student\_id} & \textbf{payment\_count} \\ \hline
+5 & 128 \\ \hline
+\end{tabular}
+\end{table}
+
+Значение \texttt{payment\_count} увеличилось со 127 до 128.
+
+% ---------------- Тест 6 ----------------
+\paragraph{Тест 6. Удаление платежа.}
+У студента 5 128 платежей. Выполняется удаление платежа 381, относящегося к поселению 31 этого студента.
+
+\begin{lstlisting}[
+    language=SQL,
+    caption={Тест 6. Состояние до изменения},
+    label={lst:test6_before}
+]
+SELECT student_id, payment_count
+FROM student_settlement_payment_counts
+WHERE student_id = 5;
+\end{lstlisting}
+
+\begin{table}[H]
+\centering
+\caption{Тест 6. Результат запроса до изменения}
+\label{tab:test6_before}
+\small
+\begin{tabular}{|c|c|}
+\hline
+\textbf{student\_id} & \textbf{payment\_count} \\ \hline
+5 & 128 \\ \hline
+\end{tabular}
+\end{table}
+
+\begin{lstlisting}[
+    language=SQL,
+    caption={Тест 6. Изменение данных и состояние после изменения},
+    label={lst:test6_after}
+]
+DELETE FROM payment
+WHERE payment_id = 381;
+
+SELECT student_id, payment_count
+FROM student_settlement_payment_counts
+WHERE student_id = 5;
+\end{lstlisting}
+
+\begin{table}[H]
+\centering
+\caption{Тест 6. Результат запроса после изменения}
+\label{tab:test6_after}
+\small
+\begin{tabular}{|c|c|}
+\hline
+\textbf{student\_id} & \textbf{payment\_count} \\ \hline
+5 & 127 \\ \hline
+\end{tabular}
+\end{table}
+
+Значение \texttt{payment\_count} уменьшилось со 128 до 127.
+
+% ---------------- Тест 7 ----------------
+\paragraph{Тест 7. Изменение поселения у платежа.}
+Платёж 319 относится к поселению 26 студента 4. Выполняется перенос платежа в поселение 30, принадлежащее студенту 5.
+
+\begin{lstlisting}[
+    language=SQL,
+    caption={Тест 7. Состояние до изменения},
+    label={lst:test7_before}
+]
+SELECT student_id, payment_count
+FROM student_settlement_payment_counts
+WHERE student_id IN (4, 5)
+ORDER BY student_id;
+\end{lstlisting}
+
+\begin{table}[H]
+\centering
+\caption{Тест 7. Результат запроса до изменения}
+\label{tab:test7_before}
+\small
+\begin{tabular}{|c|c|}
+\hline
+\textbf{student\_id} & \textbf{payment\_count} \\ \hline
+4 & 38 \\ \hline
+5 & 127 \\ \hline
+\end{tabular}
+\end{table}
+
+\begin{lstlisting}[
+    language=SQL,
+    caption={Тест 7. Изменение данных и состояние после изменения},
+    label={lst:test7_after}
+]
+UPDATE payment
+SET settlement_id = 30
+WHERE payment_id = 319;
+
+SELECT student_id, payment_count
+FROM student_settlement_payment_counts
+WHERE student_id IN (4, 5)
+ORDER BY student_id;
+\end{lstlisting}
+
+\begin{table}[H]
+\centering
+\caption{Тест 7. Результат запроса после изменения}
+\label{tab:test7_after}
+\small
+\begin{tabular}{|c|c|}
+\hline
+\textbf{student\_id} & \textbf{payment\_count} \\ \hline
+4 & 37 \\ \hline
+5 & 128 \\ \hline
+\end{tabular}
+\end{table}
+
+У студента 4 значение \texttt{payment\_count} уменьшилось на 1, у студента 5 --- увеличилось на 1.
+
+% ---------------- Сводная таблица ----------------
+Сводные результаты всех тестов представлены в таблице~\ref{tab:trigger_tests_summary}.
+
+\begin{table}[H]
+\centering
+\caption{Сводные результаты тестирования триггеров}
+\label{tab:trigger_tests_summary}
+\small
+\begin{tabularx}{\textwidth}{|c|c|X|c|c|}
+\hline
+\textbf{Тест} & \textbf{Студент} & \textbf{Показатель} & \textbf{До} & \textbf{После} \\ \hline
+1 & 121 & Запись в сводной таблице & есть (6; 73) & отсутствует \\ \hline
+2 & 4 & \texttt{settlement\_count} & 5 & 6 \\ \hline
+2 & 4 & \texttt{payment\_count} & 65 & 65 \\ \hline
+3 & 4 & \texttt{settlement\_count} & 6 & 5 \\ \hline
+3 & 4 & \texttt{payment\_count} & 65 & 53 \\ \hline
+4 & 4 & \texttt{settlement\_count} & 5 & 4 \\ \hline
+4 & 4 & \texttt{payment\_count} & 53 & 38 \\ \hline
+4 & 5 & \texttt{settlement\_count} & 9 & 10 \\ \hline
+4 & 5 & \texttt{payment\_count} & 112 & 127 \\ \hline
+5 & 5 & \texttt{payment\_count} & 127 & 128 \\ \hline
+6 & 5 & \texttt{payment\_count} & 128 & 127 \\ \hline
+7 & 4 & \texttt{payment\_count} & 38 & 37 \\ \hline
+7 & 5 & \texttt{payment\_count} & 127 & 128 \\ \hline
+\end{tabularx}
+\end{table}
+
+Таким образом, во всех семи тестах значения сводной таблицы после изменения данных совпали с ожидаемыми, что подтверждает корректную работу триггеров.
 \clearpage
 \begin{landscape}
     \thispagestyle{empty}
