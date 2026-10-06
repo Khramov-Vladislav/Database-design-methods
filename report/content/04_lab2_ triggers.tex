@@ -1,0 +1,732 @@
+% todo: исправить таблицу
+\newpage
+\subsection{Лабораторная работа №2. Триггеры}
+
+Задачи к лабораторной работе №2:
+
+\begin{enumerate}
+\item создать таблицу для хранения сводной информации о количестве поселений и платежей каждого студента; 
+\item реализовать триггеры для автоматического изменения сводной информации при добавлении, изменении и удалении записей в таблицах \texttt{student}, \texttt{settlement} и \texttt{payment}; 
+\item проверить корректность работы триггеров и автоматическое обновление сводной таблицы при изменении связанных данных.
+\end{enumerate}
+
+\subsubsection{Создание сводной таблицы}
+
+Для хранения сводной информации о количестве поселений и платежей каждого студента была создана таблица \texttt{\small student\_settlement\_payment\_counts}.
+
+Таблица содержит идентификатор студента, его фамилию, имя и отчество, а также количество связанных с ним поселений и платежей. Первоначальное заполнение таблицы выполняется на основе уже существующих записей таблиц \texttt{student}, \texttt{settlement} и \texttt{payment}.
+
+Для подсчёта количества поселений используется таблица \texttt{settlement}, а для подсчёта количества платежей --- таблица \texttt{payment}. Связь между студентом и платежом осуществляется через таблицу \texttt{settlement}.
+
+Код создания и первоначального заполнения сводной таблицы представлен в листинге~\ref{lst:student_settlement_payment_counts}.
+
+\begin{lstlisting}[
+    language=SQL,
+    caption={Создание таблицы student\_settlement\_payment\_counts},
+    label={lst:student_settlement_payment_counts}
+]
+CREATE TABLE student_settlement_payment_counts AS
+SELECT
+    student.student_id,
+    student.last_name,
+    student.first_name,
+    student.middle_name,
+    COUNT(DISTINCT settlement.settlement_id) AS settlement_count,
+    COUNT(DISTINCT payment.payment_id) AS payment_count
+FROM
+    student
+    LEFT JOIN settlement ON student.student_id = settlement.student_id
+    LEFT JOIN payment ON settlement.settlement_id = payment.settlement_id
+GROUP BY
+    student.student_id,
+    student.last_name,
+    student.first_name,
+    student.middle_name;
+\end{lstlisting}
+
+Для обеспечения уникальности записей по каждому студенту столбец \texttt{student\_id} был определён в качестве первичного ключа. Код создания первичного ключа представлен в листинге~\ref{lst:primary_key}.
+
+\begin{lstlisting}[
+    language=SQL,
+    caption={Создание первичного ключа таблицы student\_settlement\_payment\_counts},
+    label={lst:primary_key}
+]
+ALTER TABLE
+    student_settlement_payment_counts
+ADD
+    PRIMARY KEY (student_id);
+\end{lstlisting}
+
+Таким образом, в таблице \texttt{student\_settlement\_payment\_counts} для каждого студента хранится одна запись со следующими значениями:
+
+\begin{itemize}
+    \item \texttt{student\_id} --- идентификатор студента;
+    \item \texttt{last\_name} --- фамилия студента;
+    \item \texttt{first\_name} --- имя студента;
+    \item \texttt{middle\_name} --- отчество студента;
+    \item \texttt{settlement\_count} --- количество поселений;
+    \item \texttt{payment\_count} --- количество платежей.
+\end{itemize}
+
+Схема базы данных после создания сводной таблицы представлена на рисунке~\ref{fig:student_settlement_payment_counts}.
+
+\subsubsection{Создание триггеров}
+
+После создания и первоначального заполнения сводной таблицы были реализованы триггеры, предназначенные для автоматического поддержания актуальности значений \texttt{settlement\_count} и \texttt{payment\_count}.
+
+Триггеры создаются для таблиц \texttt{student}, \texttt{settlement} и \texttt{payment}. Все реализованные триггеры являются триггерами типа \texttt{AFTER} и выполняются для каждой изменённой строки с использованием конструкции \texttt{FOR EACH ROW}.
+
+\subsubsection{Триггер таблицы student}
+
+Для таблицы \texttt{student} был создан триггер \texttt{after\_student\_delete}, срабатывающий после удаления записи.
+
+При удалении студента соответствующая запись должна быть удалена и из сводной таблицы
+\texttt{student\_settlement\_payment\_counts}. Для поиска записи используется идентификатор удалённого студента \texttt{OLD.student\_id}.
+
+Код триггера представлен в листинге~\ref{lst:student_triggers}.
+
+\begin{lstlisting}[
+    language=SQL,
+    caption={Триггер удаления студента},
+    label={lst:student_triggers}
+]
+CREATE OR REPLACE FUNCTION after_student_delete()
+RETURNS TRIGGER
+AS $$
+BEGIN
+    DELETE FROM student_settlement_payment_counts
+    WHERE student_id = OLD.student_id;
+
+    RETURN OLD;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER after_student_delete
+AFTER DELETE ON student
+FOR EACH ROW
+EXECUTE FUNCTION after_student_delete();
+\end{lstlisting}
+
+Таким образом, при удалении студента автоматически удаляется соответствующая запись из сводной таблицы. Это предотвращает появление в сводной таблице записей о студентах, отсутствующих в таблице \texttt{student}.
+
+\subsubsection{Триггеры таблицы settlement}
+
+Для таблицы \texttt{settlement} были созданы триггеры для операций добавления, удаления и изменения записей.
+
+Триггер \texttt{after\_settlement\_insert} срабатывает после добавления нового поселения. Для соответствующего студента значение \texttt{settlement\_count} увеличивается на единицу.
+
+Триггер \texttt{after\_settlement\_delete} срабатывает после удаления поселения. Для студента, которому принадлежало удалённое поселение, значение \texttt{settlement\_count} уменьшается на единицу.
+
+Триггер \texttt{after\_settlement\_update} срабатывает после изменения записи поселения. Если поселение было связано с другим студентом, количество поселений у предыдущего студента уменьшается на единицу, а у нового студента увеличивается на единицу.
+
+Код триггеров представлен в листинге~\ref{lst:settlement_triggers}.
+
+\begin{lstlisting}[
+    language=SQL,
+    caption={Триггеры для таблицы settlement},
+    label={lst:settlement_triggers}
+]
+CREATE OR REPLACE FUNCTION after_settlement_insert()
+RETURNS TRIGGER
+AS $$
+BEGIN
+    UPDATE student_settlement_payment_counts
+    SET settlement_count = settlement_count + 1
+    WHERE student_id = NEW.student_id;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER after_settlement_insert
+AFTER INSERT ON settlement
+FOR EACH ROW
+EXECUTE FUNCTION after_settlement_insert();
+
+
+CREATE OR REPLACE FUNCTION after_settlement_delete()
+RETURNS TRIGGER
+AS $$
+BEGIN
+    UPDATE student_settlement_payment_counts
+    SET settlement_count = settlement_count - 1
+    WHERE student_id = OLD.student_id;
+
+    RETURN OLD;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER after_settlement_delete
+AFTER DELETE ON settlement
+FOR EACH ROW
+EXECUTE FUNCTION after_settlement_delete();
+
+
+CREATE OR REPLACE FUNCTION after_settlement_update()
+RETURNS TRIGGER
+AS $$
+BEGIN
+    IF OLD.student_id IS NOT NULL THEN
+        UPDATE student_settlement_payment_counts
+        SET settlement_count = settlement_count - 1
+        WHERE student_id = OLD.student_id;
+    END IF;
+
+    IF NEW.student_id IS NOT NULL THEN
+        UPDATE student_settlement_payment_counts
+        SET settlement_count = settlement_count + 1
+        WHERE student_id = NEW.student_id;
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER after_settlement_update
+AFTER UPDATE ON settlement
+FOR EACH ROW
+EXECUTE FUNCTION after_settlement_update();
+\end{lstlisting}
+
+\subsubsection{Триггеры таблицы payment}
+
+Для таблицы \texttt{payment} также были созданы триггеры для операций добавления, удаления и изменения записей.
+
+Таблица \texttt{payment} не содержит непосредственной связи со студентом. Связь с ним осуществляется через таблицу \texttt{settlement}: каждая запись о платеже содержит идентификатор поселения \texttt{settlement\_id}, по которому определяется соответствующий \texttt{student\_id}.
+
+Триггер \texttt{after\_payment\_insert} срабатывает после добавления платежа и увеличивает значение \texttt{payment\_count} для студента, которому принадлежит соответствующее поселение.
+
+Триггер \texttt{after\_payment\_delete} срабатывает после удаления платежа и уменьшает значение \texttt{payment\_count} для соответствующего студента.
+
+Триггер \texttt{after\_payment\_update} срабатывает после изменения платежа. Если изменяется поселение, с которым связан платеж, количество платежей у студента старого поселения уменьшается на единицу, а у студента нового поселения увеличивается на единицу.
+
+Код триггеров представлен в листинге~\ref{lst:payment_triggers}.
+
+\begin{lstlisting}[
+    language=SQL,
+    caption={Триггеры для таблицы payment},
+    label={lst:payment_triggers}
+]
+CREATE OR REPLACE FUNCTION after_payment_insert()
+RETURNS TRIGGER
+AS $function$
+BEGIN
+    UPDATE student_settlement_payment_counts
+    SET payment_count = payment_count + 1
+    WHERE student_id = (
+        SELECT student_id
+        FROM settlement
+        WHERE settlement_id = NEW.settlement_id
+    );
+
+    RETURN NEW;
+END;
+$function$ LANGUAGE plpgsql;
+
+CREATE TRIGGER after_payment_insert
+AFTER INSERT ON payment
+FOR EACH ROW
+EXECUTE FUNCTION after_payment_insert();
+
+
+CREATE OR REPLACE FUNCTION after_payment_delete()
+RETURNS TRIGGER
+AS $function$
+BEGIN
+    UPDATE student_settlement_payment_counts
+    SET payment_count = payment_count - 1
+    WHERE student_id = (
+        SELECT student_id
+        FROM settlement
+        WHERE settlement_id = OLD.settlement_id
+    );
+
+    RETURN OLD;
+END;
+$function$ LANGUAGE plpgsql;
+
+CREATE TRIGGER after_payment_delete
+AFTER DELETE ON payment
+FOR EACH ROW
+EXECUTE FUNCTION after_payment_delete();
+
+
+CREATE OR REPLACE FUNCTION after_payment_update()
+RETURNS TRIGGER
+AS $function$
+BEGIN
+    IF OLD.settlement_id IS NOT NULL THEN
+        UPDATE student_settlement_payment_counts
+        SET payment_count = payment_count - 1
+        WHERE student_id = (
+            SELECT student_id
+            FROM settlement
+            WHERE settlement_id = OLD.settlement_id
+        );
+    END IF;
+
+    IF NEW.settlement_id IS NOT NULL THEN
+        UPDATE student_settlement_payment_counts
+        SET payment_count = payment_count + 1
+        WHERE student_id = (
+            SELECT student_id
+            FROM settlement
+            WHERE settlement_id = NEW.settlement_id
+        );
+    END IF;
+
+    RETURN NEW;
+END;
+$function$ LANGUAGE plpgsql;
+
+CREATE TRIGGER after_payment_update
+AFTER UPDATE ON payment
+FOR EACH ROW
+EXECUTE FUNCTION after_payment_update();
+\end{lstlisting}
+
+\subsubsection{Проверка работы триггеров}
+
+Для проверки корректности работы триггеров были сформированы тестовые примеры, покрывающие все варианты изменения данных исходных таблиц: удаление записей таблицы \texttt{student}, добавление, удаление и изменение записей таблиц \texttt{settlement} и \texttt{payment}. Перечень проверяемых состояний представлен в таблице~\ref{tab:trigger_tests}.
+
+\begin{table}[H]
+\centering
+\caption{Перечень тестовых примеров}
+\label{tab:trigger_tests}
+\begin{tabularx}{\textwidth}{|c|X|}
+\hline
+\textbf{№} & \textbf{Описание проверяемого состояния} \\ \hline
+1 & Удаление студента: запись о студенте удаляется из сводной таблицы \\ \hline
+2 & Добавление поселения: \texttt{settlement\_count} студента увеличивается на 1 \\ \hline
+3 & Удаление поселения с платежами: \texttt{settlement\_count} уменьшается на 1, \texttt{payment\_count} уменьшается на количество платежей поселения \\ \hline
+4 & Изменение студента у поселения с платежами: счётчики поселений и платежей переносятся от прежнего студента к новому \\ \hline
+5 & Добавление платежа: \texttt{payment\_count} студента увеличивается на 1 \\ \hline
+6 & Удаление платежа: \texttt{payment\_count} студента уменьшается на 1 \\ \hline
+7 & Изменение поселения у платежа: \texttt{payment\_count} уменьшается у студента прежнего поселения и увеличивается у студента нового поселения \\ \hline
+\end{tabularx}
+\end{table}
+
+Каждый тест состоит из двух частей. В первой части выполняется запрос, фиксирующий исходное состояние сводной таблицы. Во второй части выполняется изменение данных и повторный запрос, показывающий состояние сводной таблицы после изменения. Результаты запросов представлены в таблицах. Тесты выполнялись последовательно, так как результат предыдущих тестов влияет на исходное состояние последующих.
+
+% ---------------- Тест 1 ----------------
+\paragraph{Тест 1. Удаление студента.}
+У студента с \texttt{student\_id} = 121 в сводной таблице хранится запись с шестью поселениями и 73 платежами. Выполняется удаление студента из таблицы \texttt{student}.
+
+\begin{lstlisting}[
+    language=SQL,
+    caption={Тест 1. Состояние до изменения},
+    label={lst:test1_before}
+]
+SELECT *
+FROM student_settlement_payment_counts
+WHERE student_id = 121;
+\end{lstlisting}
+
+\begin{table}[H]
+\centering
+\caption{Тест 1. Результат запроса до изменения}
+\label{tab:test1_before}
+\small
+\begin{tabular}{|c|c|c|c|c|c|}
+\hline
+\textbf{student\_id} & \textbf{last\_name} & \textbf{first\_name} & \textbf{middle\_name} & \textbf{settlement\_count} & \textbf{payment\_count} \\ \hline
+121 & Feeney & Henderson & Teagan & 6 & 73 \\ \hline
+\end{tabular}
+\end{table}
+
+\begin{lstlisting}[
+    language=SQL,
+    caption={Тест 1. Изменение данных и состояние после изменения},
+    label={lst:test1_after}
+]
+DELETE FROM student
+WHERE student_id = 121;
+
+SELECT *
+FROM student_settlement_payment_counts
+WHERE student_id = 121;
+\end{lstlisting}
+
+\begin{table}[H]
+\centering
+\caption{Тест 1. Результат запроса после изменения}
+\label{tab:test1_after}
+\small
+\begin{tabular}{|c|c|c|c|c|c|}
+\hline
+\textbf{student\_id} & \textbf{last\_name} & \textbf{first\_name} & \textbf{middle\_name} & \textbf{settlement\_count} & \textbf{payment\_count} \\ \hline
+\multicolumn{6}{|c|}{0 строк} \\ \hline
+\end{tabular}
+\end{table}
+
+Запись о студенте 121 удалена из сводной таблицы.
+
+% ---------------- Тест 2 ----------------
+\paragraph{Тест 2. Добавление поселения.}
+У студента 4 пять поселений и 65 платежей. Выполняется добавление нового поселения этого студента.
+
+\begin{lstlisting}[
+    language=SQL,
+    caption={Тест 2. Состояние до изменения},
+    label={lst:test2_before}
+]
+SELECT student_id, settlement_count, payment_count
+FROM student_settlement_payment_counts
+WHERE student_id = 4;
+\end{lstlisting}
+
+\begin{table}[H]
+\centering
+\caption{Тест 2. Результат запроса до изменения}
+\label{tab:test2_before}
+\small
+\begin{tabular}{|c|c|c|}
+\hline
+\textbf{student\_id} & \textbf{settlement\_count} & \textbf{payment\_count} \\ \hline
+4 & 5 & 65 \\ \hline
+\end{tabular}
+\end{table}
+
+\begin{lstlisting}[
+    language=SQL,
+    caption={Тест 2. Изменение данных и состояние после изменения},
+    label={lst:test2_after}
+]
+INSERT INTO settlement (student_id, employee_id, place_id)
+VALUES (4, 2, 2);
+
+SELECT student_id, settlement_count, payment_count
+FROM student_settlement_payment_counts
+WHERE student_id = 4;
+\end{lstlisting}
+
+\begin{table}[H]
+\centering
+\caption{Тест 2. Результат запроса после изменения}
+\label{tab:test2_after}
+\small
+\begin{tabular}{|c|c|c|}
+\hline
+\textbf{student\_id} & \textbf{settlement\_count} & \textbf{payment\_count} \\ \hline
+4 & 6 & 65 \\ \hline
+\end{tabular}
+\end{table}
+
+Значение \texttt{settlement\_count} увеличилось с 5 до 6. Значение \texttt{payment\_count} не изменилось, так как у нового поселения платежей нет.
+
+% ---------------- Тест 3 ----------------
+\paragraph{Тест 3. Удаление поселения с платежами.}
+У студента 4 шесть поселений и 65 платежей. Поселение 29 содержит 12 платежей, которые удаляются каскадно вместе с ним.
+
+\begin{lstlisting}[
+    language=SQL,
+    caption={Тест 3. Состояние до изменения},
+    label={lst:test3_before}
+]
+SELECT student_id, settlement_count, payment_count
+FROM student_settlement_payment_counts
+WHERE student_id = 4;
+\end{lstlisting}
+
+\begin{table}[H]
+\centering
+\caption{Тест 3. Результат запроса до изменения}
+\label{tab:test3_before}
+\small
+\begin{tabular}{|c|c|c|}
+\hline
+\textbf{student\_id} & \textbf{settlement\_count} & \textbf{payment\_count} \\ \hline
+4 & 6 & 65 \\ \hline
+\end{tabular}
+\end{table}
+
+\begin{lstlisting}[
+    language=SQL,
+    caption={Тест 3. Изменение данных и состояние после изменения},
+    label={lst:test3_after}
+]
+DELETE FROM settlement
+WHERE settlement_id = 29;
+
+SELECT student_id, settlement_count, payment_count
+FROM student_settlement_payment_counts
+WHERE student_id = 4;
+\end{lstlisting}
+
+\begin{table}[H]
+\centering
+\caption{Тест 3. Результат запроса после изменения}
+\label{tab:test3_after}
+\small
+\begin{tabular}{|c|c|c|}
+\hline
+\textbf{student\_id} & \textbf{settlement\_count} & \textbf{payment\_count} \\ \hline
+4 & 5 & 53 \\ \hline
+\end{tabular}
+\end{table}
+
+Значение \texttt{settlement\_count} уменьшилось с 6 до 5, а \texttt{payment\_count} --- с 65 до 53, то есть на 12 платежей удалённого поселения.
+
+% ---------------- Тест 4 ----------------
+\paragraph{Тест 4. Изменение студента у поселения.}
+Поселение 25 принадлежит студенту 4 и содержит 15 платежей. Выполняется передача этого поселения студенту 5.
+
+\begin{lstlisting}[
+    language=SQL,
+    caption={Тест 4. Состояние до изменения},
+    label={lst:test4_before}
+]
+SELECT student_id, settlement_count, payment_count
+FROM student_settlement_payment_counts
+WHERE student_id IN (4, 5)
+ORDER BY student_id;
+\end{lstlisting}
+
+\begin{table}[H]
+\centering
+\caption{Тест 4. Результат запроса до изменения}
+\label{tab:test4_before}
+\small
+\begin{tabular}{|c|c|c|}
+\hline
+\textbf{student\_id} & \textbf{settlement\_count} & \textbf{payment\_count} \\ \hline
+4 & 5 & 53 \\ \hline
+5 & 9 & 112 \\ \hline
+\end{tabular}
+\end{table}
+
+\begin{lstlisting}[
+    language=SQL,
+    caption={Тест 4. Изменение данных и состояние после изменения},
+    label={lst:test4_after}
+]
+UPDATE settlement
+SET student_id = 5
+WHERE settlement_id = 25;
+
+SELECT student_id, settlement_count, payment_count
+FROM student_settlement_payment_counts
+WHERE student_id IN (4, 5)
+ORDER BY student_id;
+\end{lstlisting}
+
+\begin{table}[H]
+\centering
+\caption{Тест 4. Результат запроса после изменения}
+\label{tab:test4_after}
+\small
+\begin{tabular}{|c|c|c|}
+\hline
+\textbf{student\_id} & \textbf{settlement\_count} & \textbf{payment\_count} \\ \hline
+4 & 4 & 38 \\ \hline
+5 & 10 & 127 \\ \hline
+\end{tabular}
+\end{table}
+
+У студента 4 значения уменьшились на одно поселение и 15 платежей, у студента 5 --- увеличились на столько же.
+
+% ---------------- Тест 5 ----------------
+\paragraph{Тест 5. Добавление платежа.}
+У студента 5 127 платежей. Выполняется добавление платежа к поселению 30, принадлежащему этому студенту.
+
+\begin{lstlisting}[
+    language=SQL,
+    caption={Тест 5. Состояние до изменения},
+    label={lst:test5_before}
+]
+SELECT student_id, payment_count
+FROM student_settlement_payment_counts
+WHERE student_id = 5;
+\end{lstlisting}
+
+\begin{table}[H]
+\centering
+\caption{Тест 5. Результат запроса до изменения}
+\label{tab:test5_before}
+\small
+\begin{tabular}{|c|c|}
+\hline
+\textbf{student\_id} & \textbf{payment\_count} \\ \hline
+5 & 127 \\ \hline
+\end{tabular}
+\end{table}
+
+\begin{lstlisting}[
+    language=SQL,
+    caption={Тест 5. Изменение данных и состояние после изменения},
+    label={lst:test5_after}
+]
+INSERT INTO payment (settlement_id, payment_amount, payment_date)
+VALUES (30, 5000, CURRENT_DATE);
+
+SELECT student_id, payment_count
+FROM student_settlement_payment_counts
+WHERE student_id = 5;
+\end{lstlisting}
+
+\begin{table}[H]
+\centering
+\caption{Тест 5. Результат запроса после изменения}
+\label{tab:test5_after}
+\small
+\begin{tabular}{|c|c|}
+\hline
+\textbf{student\_id} & \textbf{payment\_count} \\ \hline
+5 & 128 \\ \hline
+\end{tabular}
+\end{table}
+
+Значение \texttt{payment\_count} увеличилось со 127 до 128.
+
+% ---------------- Тест 6 ----------------
+\paragraph{Тест 6. Удаление платежа.}
+У студента 5 128 платежей. Выполняется удаление платежа 381, относящегося к поселению 31 этого студента.
+
+\begin{lstlisting}[
+    language=SQL,
+    caption={Тест 6. Состояние до изменения},
+    label={lst:test6_before}
+]
+SELECT student_id, payment_count
+FROM student_settlement_payment_counts
+WHERE student_id = 5;
+\end{lstlisting}
+
+\begin{table}[H]
+\centering
+\caption{Тест 6. Результат запроса до изменения}
+\label{tab:test6_before}
+\small
+\begin{tabular}{|c|c|}
+\hline
+\textbf{student\_id} & \textbf{payment\_count} \\ \hline
+5 & 128 \\ \hline
+\end{tabular}
+\end{table}
+
+\begin{lstlisting}[
+    language=SQL,
+    caption={Тест 6. Изменение данных и состояние после изменения},
+    label={lst:test6_after}
+]
+DELETE FROM payment
+WHERE payment_id = 381;
+
+SELECT student_id, payment_count
+FROM student_settlement_payment_counts
+WHERE student_id = 5;
+\end{lstlisting}
+
+\begin{table}[H]
+\centering
+\caption{Тест 6. Результат запроса после изменения}
+\label{tab:test6_after}
+\small
+\begin{tabular}{|c|c|}
+\hline
+\textbf{student\_id} & \textbf{payment\_count} \\ \hline
+5 & 127 \\ \hline
+\end{tabular}
+\end{table}
+
+Значение \texttt{payment\_count} уменьшилось со 128 до 127.
+
+% ---------------- Тест 7 ----------------
+\paragraph{Тест 7. Изменение поселения у платежа.}
+Платёж 319 относится к поселению 26 студента 4. Выполняется перенос платежа в поселение 30, принадлежащее студенту 5.
+
+\begin{lstlisting}[
+    language=SQL,
+    caption={Тест 7. Состояние до изменения},
+    label={lst:test7_before}
+]
+SELECT student_id, payment_count
+FROM student_settlement_payment_counts
+WHERE student_id IN (4, 5)
+ORDER BY student_id;
+\end{lstlisting}
+
+\begin{table}[H]
+\centering
+\caption{Тест 7. Результат запроса до изменения}
+\label{tab:test7_before}
+\small
+\begin{tabular}{|c|c|}
+\hline
+\textbf{student\_id} & \textbf{payment\_count} \\ \hline
+4 & 38 \\ \hline
+5 & 127 \\ \hline
+\end{tabular}
+\end{table}
+
+\begin{lstlisting}[
+    language=SQL,
+    caption={Тест 7. Изменение данных и состояние после изменения},
+    label={lst:test7_after}
+]
+UPDATE payment
+SET settlement_id = 30
+WHERE payment_id = 319;
+
+SELECT student_id, payment_count
+FROM student_settlement_payment_counts
+WHERE student_id IN (4, 5)
+ORDER BY student_id;
+\end{lstlisting}
+
+\begin{table}[H]
+\centering
+\caption{Тест 7. Результат запроса после изменения}
+\label{tab:test7_after}
+\small
+\begin{tabular}{|c|c|}
+\hline
+\textbf{student\_id} & \textbf{payment\_count} \\ \hline
+4 & 37 \\ \hline
+5 & 128 \\ \hline
+\end{tabular}
+\end{table}
+
+У студента 4 значение \texttt{payment\_count} уменьшилось на 1, у студента 5 --- увеличилось на 1.
+
+% ---------------- Сводная таблица ----------------
+Сводные результаты всех тестов представлены в таблице~\ref{tab:trigger_tests_summary}.
+
+\begin{table}[H]
+\centering
+\caption{Сводные результаты тестирования триггеров}
+\label{tab:trigger_tests_summary}
+\small
+\begin{tabularx}{\textwidth}{|c|c|X|c|c|}
+\hline
+\textbf{Тест} & \textbf{Студент} & \textbf{Показатель} & \textbf{До} & \textbf{После} \\ \hline
+1 & 121 & Запись в сводной таблице & есть (6; 73) & отсутствует \\ \hline
+2 & 4 & \texttt{settlement\_count} & 5 & 6 \\ \hline
+2 & 4 & \texttt{payment\_count} & 65 & 65 \\ \hline
+3 & 4 & \texttt{settlement\_count} & 6 & 5 \\ \hline
+3 & 4 & \texttt{payment\_count} & 65 & 53 \\ \hline
+4 & 4 & \texttt{settlement\_count} & 5 & 4 \\ \hline
+4 & 4 & \texttt{payment\_count} & 53 & 38 \\ \hline
+4 & 5 & \texttt{settlement\_count} & 9 & 10 \\ \hline
+4 & 5 & \texttt{payment\_count} & 112 & 127 \\ \hline
+5 & 5 & \texttt{payment\_count} & 127 & 128 \\ \hline
+6 & 5 & \texttt{payment\_count} & 128 & 127 \\ \hline
+7 & 4 & \texttt{payment\_count} & 38 & 37 \\ \hline
+7 & 5 & \texttt{payment\_count} & 127 & 128 \\ \hline
+\end{tabularx}
+\end{table}
+
+Таким образом, во всех семи тестах значения сводной таблицы после изменения данных совпали с ожидаемыми, что подтверждает корректную работу триггеров.
+\clearpage
+\begin{landscape}
+    \thispagestyle{empty}
+   \begin{figure}[H]
+    \centering
+    \vfill
+    \includegraphics[width=\linewidth]{figures/db-schema-en.png}
+    \caption{Графическое представление создания представления}
+    \label{fig:student_settlement_payment_counts}
+    \vfill
+\end{figure}
+\end{landscape}
+\clearpage
