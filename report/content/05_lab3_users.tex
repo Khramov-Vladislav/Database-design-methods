@@ -1,0 +1,268 @@
+\newpage
+\subsection{Лабораторная работа №3. Управление доступом}
+
+Задачи к лабораторной работе №3:
+
+\begin{enumerate}
+\item создать пользователя, имеющего доступ только на чтение сводной таблицы \texttt{student\_settlement\_payment\_counts};
+\item создать пользователя, управляющего таблицами \texttt{student}, \texttt{settlement} и \texttt{payment}, изменение которых активирует триггеры;
+\item проверить, что изменения, выполненные вторым пользователем, видны первому пользователю в сводной таблице;
+\item продемонстрировать запросы, которые не выполняются ни у одного из пользователей.
+\end{enumerate}
+
+\subsubsection{Создание ролей и назначение прав}
+
+Были созданы две роли с правом входа: \texttt{dorm\_viewer} и \texttt{dorm\_operator}. Права ролей представлены в таблице~\ref{tab:roles}.
+
+\begin{table}[H]
+\centering
+\caption{Роли и их права}
+\label{tab:roles}
+\begin{tabularx}{\textwidth}{|>{\raggedright\arraybackslash}p{3.5cm}|>{\raggedright\arraybackslash}X|>{\raggedright\arraybackslash}p{3.8cm}|}
+\hline
+\textbf{Роль} & \textbf{Объекты} & \textbf{Права} \\ \hline
+\texttt{dorm\_viewer} & \texttt{student\_settlement\_payment\_counts} & \texttt{SELECT} \\ \hline
+\texttt{dorm\_operator} & \texttt{student}, \texttt{settlement}, \texttt{payment} & \texttt{SELECT}, \texttt{INSERT}, \texttt{UPDATE}, \texttt{DELETE} \\ \hline
+\end{tabularx}
+\end{table}
+
+
+Роль \texttt{dorm\_operator} не имеет прав на сводную таблицу, поэтому изменить её напрямую она не может. Чтобы триггеры могли обновлять сводную таблицу при изменениях, выполненных этой ролью, триггерные функции были переведены в режим \texttt{SECURITY DEFINER}: они выполняются с правами владельца таблицы. Таким образом, значения счётчиков изменяются только через триггеры.
+
+Код создания ролей и назначения прав представлен в листинге~\ref{lst:roles}.
+
+\begin{lstlisting}[
+    language=SQL,
+    caption={Создание ролей и назначение прав},
+    label={lst:roles}
+]
+CREATE ROLE dorm_viewer   LOGIN PASSWORD 'viewer_pass';
+CREATE ROLE dorm_operator LOGIN PASSWORD 'operator_pass';
+
+GRANT CONNECT ON DATABASE dormitory TO dorm_viewer, dorm_operator;
+GRANT USAGE ON SCHEMA public TO dorm_viewer, dorm_operator;
+
+GRANT SELECT ON student_settlement_payment_counts TO dorm_viewer;
+
+GRANT SELECT, INSERT, UPDATE, DELETE
+ON student, settlement, payment TO dorm_operator;
+
+GRANT USAGE, SELECT ON SEQUENCE
+    student_student_id_seq,
+    settlement_settlement_id_seq,
+    payment_payment_id_seq
+TO dorm_operator;
+
+ALTER FUNCTION after_student_insert()     SECURITY DEFINER SET search_path = public;
+ALTER FUNCTION after_student_update()     SECURITY DEFINER SET search_path = public;
+ALTER FUNCTION after_student_delete()     SECURITY DEFINER SET search_path = public;
+ALTER FUNCTION after_settlement_insert()  SECURITY DEFINER SET search_path = public;
+ALTER FUNCTION after_settlement_update()  SECURITY DEFINER SET search_path = public;
+ALTER FUNCTION after_settlement_delete()  SECURITY DEFINER SET search_path = public;
+ALTER FUNCTION before_settlement_delete() SECURITY DEFINER SET search_path = public;
+ALTER FUNCTION after_payment_insert()     SECURITY DEFINER SET search_path = public;
+ALTER FUNCTION after_payment_update()     SECURITY DEFINER SET search_path = public;
+ALTER FUNCTION after_payment_delete()     SECURITY DEFINER SET search_path = public;
+\end{lstlisting}
+
+Корректность настроек проверялась запросами к системным каталогам (листинг~\ref{lst:check_roles}). Результаты представлены в таблицах~\ref{tab:check_roles}--\ref{tab:check_functions}.
+
+\begin{lstlisting}[
+    language=SQL,
+    caption={Проверка ролей, прав и триггерных функций},
+    label={lst:check_roles}
+]
+SELECT rolname, rolcanlogin, rolsuper FROM pg_roles
+WHERE rolname IN ('dorm_viewer', 'dorm_operator')
+ORDER BY rolname;
+
+SELECT grantee, table_name,
+       string_agg(privilege_type, ', ' ORDER BY privilege_type) AS privileges
+FROM information_schema.role_table_grants
+WHERE grantee IN ('dorm_viewer', 'dorm_operator')
+GROUP BY grantee, table_name
+ORDER BY grantee, table_name;
+
+SELECT proname, prosecdef FROM pg_proc
+WHERE proname ~ '^(after|before)_(student|settlement|payment)_'
+ORDER BY proname;
+\end{lstlisting}
+
+\begin{table}[H]
+\centering
+\caption{Созданные роли}
+\label{tab:check_roles}
+\small
+\begin{tabular}{|l|c|c|}
+\hline
+\textbf{rolname} & \textbf{rolcanlogin} & \textbf{rolsuper} \\ \hline
+dorm\_operator & t & f \\ \hline
+dorm\_viewer & t & f \\ \hline
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{Права ролей на таблицы}
+\label{tab:check_grants}
+\small
+% Задаем общую ширину \textwidth. Колонки X займут всё доступное пространство без вылавливания за поля.
+\begin{tabularx}{\textwidth}{|>{\raggedright\arraybackslash}p{2.8cm}|>{\raggedright\arraybackslash}X|>{\raggedright\arraybackslash}p{4.2cm}|}
+\hline
+\textbf{grantee} & \textbf{table\_name} & \textbf{privileges} \\ \hline
+\texttt{dorm\_operator} & \texttt{payment} & \texttt{DELETE}, \texttt{INSERT}, \texttt{SELECT}, \texttt{UPDATE} \\ \hline
+\texttt{dorm\_operator} & \texttt{settlement} & \texttt{DELETE}, \texttt{INSERT}, \texttt{SELECT}, \texttt{UPDATE} \\ \hline
+\texttt{dorm\_operator} & \texttt{student} & \texttt{DELETE}, \texttt{INSERT}, \texttt{SELECT}, \texttt{UPDATE} \\ \hline
+\texttt{dorm\_viewer} & \texttt{student\_}\-\texttt{settlement\_}\-\texttt{payment\_}\-\texttt{counts} & \texttt{SELECT} \\ \hline
+\end{tabularx}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{Режим выполнения триггерных функций}
+\label{tab:check_functions}
+\small
+\begin{tabular}{|l|c|}
+\hline
+\textbf{proname} & \textbf{prosecdef} \\ \hline
+after\_payment\_delete & t \\ \hline
+after\_payment\_insert & t \\ \hline
+after\_payment\_update & t \\ \hline
+after\_settlement\_delete & t \\ \hline
+after\_settlement\_insert & t \\ \hline
+after\_settlement\_update & t \\ \hline
+after\_student\_delete & t \\ \hline
+after\_student\_insert & t \\ \hline
+after\_student\_update & t \\ \hline
+before\_settlement\_delete & t \\ \hline
+\end{tabular}
+\end{table}
+
+\subsubsection{Изменение данных одним пользователем и просмотр результата другим}
+
+Проверка выполнялась в двух сеансах: в первом выполнено подключение под ролью \texttt{dorm\_viewer}, во втором --- под ролью \texttt{dorm\_operator}. Сценарий включает добавление поселения и платежа студенту 4 ролью \texttt{dorm\_operator} и последующее удаление этих записей. После каждого этапа роль \texttt{dorm\_viewer} запрашивает сводную таблицу.
+
+\paragraph{Исходное состояние.} Запрос выполняется под ролью \texttt{dorm\_viewer}.
+
+\begin{lstlisting}[
+    language=SQL,
+    caption={Роль dorm\_viewer. Состояние до изменения},
+    label={lst:lab3_before}
+]
+SELECT *
+FROM student_settlement_payment_counts
+WHERE student_id = 4;
+\end{lstlisting}
+
+\begin{table}[H]
+\centering
+\caption{Результат запроса до изменения}
+\label{tab:lab3_before}
+\small
+\begin{tabular}{|c|c|c|c|c|c|}
+\hline
+\textbf{student\_id} & \textbf{last\_name} & \textbf{first\_name} & \textbf{middle\_name} & \textbf{settlement\_count} & \textbf{payment\_count} \\ \hline
+4 & Blanda & Greyson & Kendrick & 4 & 37 \\ \hline
+\end{tabular}
+\end{table}
+
+\paragraph{Добавление данных.} Операции выполняются под ролью \texttt{dorm\_operator}.
+
+\begin{lstlisting}[
+    language=SQL,
+    caption={Роль dorm\_operator. Добавление поселения и платежа},
+    label={lst:lab3_insert}
+]
+INSERT INTO settlement (student_id, employee_id, place_id)
+VALUES (4, 2, 2);
+
+INSERT INTO payment (settlement_id, payment_amount, payment_date)
+VALUES (26, 5000, CURRENT_DATE);
+\end{lstlisting}
+
+Запрос из листинга~\ref{lst:lab3_before} под ролью \texttt{dorm\_viewer} показывает обновлённое состояние (таблица~\ref{tab:lab3_after_insert}).
+
+\begin{table}[H]
+\centering
+\caption{Результат запроса после добавления данных}
+\label{tab:lab3_after_insert}
+\small
+\begin{tabular}{|c|c|c|c|c|c|}
+\hline
+\textbf{student\_id} & \textbf{last\_name} & \textbf{first\_name} & \textbf{middle\_name} & \textbf{settlement\_count} & \textbf{payment\_count} \\ \hline
+4 & Blanda & Greyson & Kendrick & 5 & 38 \\ \hline
+\end{tabular}
+\end{table}
+
+\paragraph{Удаление данных.} Операции выполняются под ролью \texttt{dorm\_operator}.
+
+\begin{lstlisting}[
+    language=SQL,
+    caption={Роль dorm\_operator. Удаление добавленных записей},
+    label={lst:lab3_delete}
+]
+DELETE FROM payment
+WHERE payment_id = (SELECT MAX(payment_id) FROM payment);
+
+DELETE FROM settlement
+WHERE settlement_id = (
+    SELECT MAX(settlement_id) FROM settlement WHERE student_id = 4
+);
+\end{lstlisting}
+
+Повторный запрос под ролью \texttt{dorm\_viewer} показывает возврат к исходным значениям (таблица~\ref{tab:lab3_after_delete}).
+
+\begin{table}[H]
+\centering
+\caption{Результат запроса после удаления данных}
+\label{tab:lab3_after_delete}
+\small
+\begin{tabular}{|c|c|c|c|c|c|}
+\hline
+\textbf{student\_id} & \textbf{last\_name} & \textbf{first\_name} & \textbf{middle\_name} & \textbf{settlement\_count} & \textbf{payment\_count} \\ \hline
+4 & Blanda & Greyson & Kendrick & 4 & 37 \\ \hline
+\end{tabular}
+\end{table}
+
+Сравнение значений на всех этапах представлено в таблице~\ref{tab:lab3_summary}.
+
+\begin{table}[H]
+\centering
+\caption{Значения счётчиков студента 4 на этапах проверки}
+\label{tab:lab3_summary}
+\small
+\begin{tabularx}{\textwidth}{|c|X|c|c|}
+\hline
+\textbf{№} & \textbf{Этап} & \textbf{settlement\_count} & \textbf{payment\_count} \\ \hline
+1 & Исходное состояние & 4 & 37 \\ \hline
+2 & После добавления поселения и платежа & 5 & 38 \\ \hline
+3 & После удаления поселения и платежа & 4 & 37 \\ \hline
+\end{tabularx}
+\end{table}
+
+Таким образом, роль \texttt{dorm\_operator}, не имеющая доступа к сводной таблице, изменяет данные исходных таблиц, а роль \texttt{dorm\_viewer}, имеющая только право чтения, видит результат работы триггеров.
+
+\subsubsection{Запросы, не выполняющиеся из-за ограничений прав}
+
+Для проверки разграничения доступа были выполнены запросы, которые должны завершиться ошибкой. Запросы и сообщения об ошибках представлены в таблице~\ref{tab:denied}.
+
+\begin{table}[H]
+\centering
+\caption{Запросы, завершившиеся ошибкой}
+\label{tab:denied}
+\small
+\begin{tabularx}{\textwidth}{|c|>{\raggedright\arraybackslash}p{2.6cm}|>{\raggedright\arraybackslash}X|>{\raggedright\arraybackslash}X|}
+\hline
+\textbf{№} & \textbf{Роль} & \textbf{Запрос} & \textbf{Сообщение} \\ \hline
+1 & \texttt{dorm\_viewer} & \texttt{INSERT INTO settlement (student\_id, employee\_id, place\_id) VALUES (4, 2, 2);} & \texttt{permission denied for table settlement} \\ \hline
+2 & \texttt{dorm\_viewer} & \texttt{DELETE FROM payment WHERE payment\_id = (SELECT MAX(payment\_id) FROM payment);} & \texttt{permission denied for table payment} \\ \hline
+3 & \texttt{dorm\_viewer} & \texttt{SELECT * FROM payment LIMIT 1;} & \texttt{permission denied for table payment} \\ \hline
+4 & \texttt{dorm\_viewer} & \texttt{UPDATE student\_}\-\texttt{settlement\_}\-\texttt{payment\_}\-\texttt{counts SET payment\_count = 0 WHERE student\_id = 4;} & \texttt{permission denied for table student\_}\-\texttt{settlement\_}\-\texttt{payment\_}\-\texttt{counts} \\ \hline
+5 & \texttt{dorm\_operator} & \texttt{SELECT * FROM student\_}\-\texttt{settlement\_}\-\texttt{payment\_}\-\texttt{counts WHERE student\_id = 4;} & \texttt{permission denied for table student\_}\-\texttt{settlement\_}\-\texttt{payment\_}\-\texttt{counts} \\ \hline
+6 & \texttt{dorm\_operator} & \texttt{UPDATE student\_}\-\texttt{settlement\_}\-\texttt{payment\_}\-\texttt{counts SET payment\_count = 0 WHERE student\_id = 4;} & \texttt{permission denied for table student\_}\-\texttt{settlement\_}\-\texttt{payment\_}\-\texttt{counts} \\ \hline
+7 & \texttt{dorm\_viewer} & \texttt{DROP TABLE student\_}\-\texttt{settlement\_}\-\texttt{payment\_}\-\texttt{counts;} & \texttt{must be owner of table student\_}\-\texttt{settlement\_}\-\texttt{payment\_}\-\texttt{counts} \\ \hline
+8 & \texttt{dorm\_operator} & \texttt{DROP TABLE student\_}\-\texttt{settlement\_}\-\texttt{payment\_}\-\texttt{counts;} & \texttt{must be owner of table student\_}\-\texttt{settlement\_}\-\texttt{payment\_}\-\texttt{counts} \\ \hline
+\end{tabularx}
+\end{table}
+
+Роль \texttt{dorm\_viewer} не может читать и изменять исходные таблицы, а также изменять сводную таблицу. Роль \texttt{dorm\_operator} не может читать и изменять сводную таблицу, поэтому значения счётчиков она изменяет только косвенно, через триггеры. Запрос на удаление сводной таблицы (строки 7 и 8) не выполняется ни у одной из ролей, так как для этого требуется быть владельцем таблицы.
