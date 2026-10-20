@@ -1,7 +1,8 @@
 \newpage
 \subsection{Лабораторная работа №4. Транзакции}
+Задачи к лабораторной работе №4:
 
-Цель работы --- на примере двух параллельных транзакций показать наличие или отсутствие одной из аномалий параллельного выполнения на выбранном уровне изоляции.
+На примере двух параллельных транзакций показать наличие или отсутствие одной из аномалий параллельного выполнения на выбранном уровне изоляции.
 
 Для демонстрации выбраны уровень изоляции \texttt{READ COMMITTED} и аномалия <<неповторяющееся чтение>>. Требуется проверить, что произойдёт, если одна транзакция дважды читает одну и ту же строку таблицы \texttt{payment}, а между этими чтениями другая транзакция изменяет эту строку и фиксирует изменение. Если результаты двух одинаковых запросов различаются, аномалия присутствует на данном уровне изоляции.
 
@@ -52,18 +53,16 @@ COMMIT;
 \caption{Порядок выполнения сценария}
 \label{tab:tx_scenario}
 \small
-\begin{tabularx}{\textwidth}{|c|>{\raggedright\arraybackslash}X|>{\raggedright\arraybackslash}X|}
+\renewcommand{\arraystretch}{1.3} % Увеличивает вертикальные отступы в строках таблицы
+\begin{tabularx}{\textwidth}{|c|X|X|}
 \hline
 \textbf{№} & \textbf{Действия транзакции А} & \textbf{Действия транзакции Б} \\ \hline
 1 & \texttt{BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;} & \\ \hline
-2 & \texttt{SELECT payment\_id, payment\_amount FROM payment WHERE payment\_id = 125;}\newline
-Результат: \texttt{payment\_amount} = 693.88 & \\ \hline
+2 & \texttt{SELECT payment\_id, payment\_amount FROM payment WHERE payment\_id = 125;} \par \textit{Результат:} \texttt{payment\_amount} = 693.88 & \\ \hline
 3 & & \texttt{BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;} \\ \hline
-4 & & \texttt{UPDATE payment SET payment\_amount = 1000.00 WHERE payment\_id = 125;}\newline
-Результат: \texttt{UPDATE 1} \\ \hline
+4 & & \texttt{UPDATE payment SET payment\_amount = 1000.00 WHERE payment\_id = 125;} \par \textit{Результат:} \texttt{UPDATE 1} \\ \hline
 5 & & \texttt{COMMIT;} \\ \hline
-6 & \texttt{SELECT payment\_id, payment\_amount FROM payment WHERE payment\_id = 125;}\newline
-Результат: \texttt{payment\_amount} = 1000.00 & \\ \hline
+6 & \texttt{SELECT payment\_id, payment\_amount FROM payment WHERE payment\_id = 125;} \par \textit{Результат:} \texttt{payment\_amount} = 1000.00 & \\ \hline
 7 & \texttt{COMMIT;} & \\ \hline
 \end{tabularx}
 \end{table}
