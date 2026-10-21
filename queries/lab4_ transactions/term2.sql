@@ -1,0 +1,10 @@
+BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
+
+UPDATE
+    payment
+SET
+    payment_amount = 1000.00
+WHERE
+    payment_id = 125;
+
+COMMIT;

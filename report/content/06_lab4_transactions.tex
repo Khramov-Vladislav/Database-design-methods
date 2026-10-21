@@ -57,9 +57,9 @@ COMMIT;
 \begin{tabularx}{\textwidth}{|c|X|X|}
 \hline
 \textbf{№} & \textbf{Действия транзакции А} & \textbf{Действия транзакции Б} \\ \hline
-1 & \texttt{BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;} & \\ \hline
+1 & \texttt{BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED; Скриншот выполнения сценария представлен на рис.\ref{fig:lab4_tx_a}} & \\ \hline
 2 & \texttt{SELECT payment\_id, payment\_amount FROM payment WHERE payment\_id = 125;} \par \textit{Результат:} \texttt{payment\_amount} = 693.88 & \\ \hline
-3 & & \texttt{BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;} \\ \hline
+3 & & \texttt{BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED; Скриншот выполнения сценария представлен на рис.\ref{fig:lab4_tx_b}} \\ \hline
 4 & & \texttt{UPDATE payment SET payment\_amount = 1000.00 WHERE payment\_id = 125;} \par \textit{Результат:} \texttt{UPDATE 1} \\ \hline
 5 & & \texttt{COMMIT;} \\ \hline
 6 & \texttt{SELECT payment\_id, payment\_amount FROM payment WHERE payment\_id = 125;} \par \textit{Результат:} \texttt{payment\_amount} = 1000.00 & \\ \hline
@@ -86,4 +86,4 @@ COMMIT;
 
 \subsubsection{Обоснование результата}
 
-На уровне изоляции \texttt{READ COMMITTED} аномалия неповторяющегося чтения присутствует. Транзакция А дважды выполнила один и тот же запрос к строке с \texttt{payment\_id} = 125 и, не завершившись, получила разные значения: 693.88 при первом чтении и 1000.00 при втором. Это произошло потому, что между чтениями транзакция Б изменила сумму платежа и зафиксировала изменение командой \texttt{COMMIT}. На данном уровне каждый запрос видит все данные, зафиксированные к моменту его начала, а не к моменту начала транзакции, поэтому второй запрос транзакции А увидел результат работы транзакции Б. Для исключения такого поведения необходим уровень \texttt{REPEATABLE READ} или выше, при котором транзакция работает с единым снимком данных, зафиксированных к её началу.
+На уровне \texttt{READ COMMITTED} возникает аномалия неповторяющегося чтения. Сначала транзакция А прочитала строку с payment\_id = 125 и получила 693.88. Пока А ещё не завершилась, транзакция Б изменила сумму платежа и зафиксировала изменение командой \texttt{COMMIT}. Далее А повторила тот же запрос и получила 1000.00. Это произошло потому, что на этом уровне каждый запрос видит данные, зафиксированные к моменту его начала, а не к началу транзакции.
